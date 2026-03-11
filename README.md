@@ -69,8 +69,8 @@ python corner_kicks.py
 This will:
 - Parse all event files in `events/`
 - Output `corner_deliveries.csv` and `goals.csv`
-- Print statistical test results to the console
-- Display a series of visualisation plots
+- Output statistical test results
+- Display a series of visualization plots
 
 ---
 

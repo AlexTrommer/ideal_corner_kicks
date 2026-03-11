@@ -38,6 +38,7 @@ import statsmodels.formula.api as smf
 EVENTS_DIR = Path("events")
 CORNERS_OUTPUT = "corner_deliveries.csv"
 GOALS_OUTPUT = "goals.csv"
+PLOTS_DIR = Path("plots")
 
 # Success window: goal must occur within this many seconds of the corner
 SUCCESS_WINDOW_SEC = 10
@@ -376,7 +377,9 @@ def plot_delivery_scatter(df: pd.DataFrame) -> None:
     ax.scatter(df["end_x"], df["end_y"], c=colors, alpha=alphas, s=8)
     ax.set_title("Corner Delivery Locations\n(Green = Goal within 10 s, Red = No Goal)")
     plt.tight_layout()
+    plt.savefig(PLOTS_DIR / "delivery_scatter.png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.show()
+    print("Saved: plots/delivery_scatter.png")
 
 
 def plot_zone_heatmap(df: pd.DataFrame) -> None:
@@ -408,7 +411,9 @@ def plot_zone_heatmap(df: pd.DataFrame) -> None:
 
     ax.set_title("Corner Kick Success Rate by Zone")
     plt.tight_layout()
+    plt.savefig(PLOTS_DIR / "zone_heatmap.png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.show()
+    print("Saved: plots/zone_heatmap.png")
 
 
 def plot_swing_zone_heatmap(df: pd.DataFrame) -> None:
@@ -441,47 +446,44 @@ def plot_swing_zone_heatmap(df: pd.DataFrame) -> None:
 
     plt.suptitle("Corner Kick Success Rate by Zone and Swing Type")
     plt.tight_layout()
+    plt.savefig(PLOTS_DIR / "swing_zone_heatmap.png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.show()
+    print("Saved: plots/swing_zone_heatmap.png")
 
 
 def plot_polynomial_peak(df: pd.DataFrame) -> None:
     """Polynomial fit to find the peak success coordinate for end_x and end_y."""
-    df_clean = df.dropna(subset=["end_x", "end_y"])
+    df_clean = df.dropna(subset=["end_x", "end_y"]).copy()
 
-    for coord, bins in [("end_y", np.arange(0, 81, 0.5)), ("end_x", np.arange(90, 121, 0.5))]:
-        df_clean = df_clean.copy()
+    polys = {}
+    for coord, bins, fname in [
+        ("end_y", np.arange(0, 81, 0.5),   "poly_end_y.png"),
+        ("end_x", np.arange(90, 121, 0.5), "poly_end_x.png"),
+    ]:
         df_clean["bin"] = pd.cut(df_clean[coord], bins=bins)
         success_by_bin = df_clean.groupby("bin")["success_int"].mean()
         centers = [iv.left + (iv.right - iv.left) / 2 for iv in success_by_bin.index]
         poly = np.poly1d(np.polyfit(centers, success_by_bin, deg=9))
-        smooth = poly(centers)
+        polys[coord] = (poly, centers)
 
         fig, ax = plt.subplots(figsize=(8, 4))
         ax.plot(centers, success_by_bin, "o", alpha=0.6, label="Binned success rate")
-        ax.plot(centers, smooth, "-", color="red", label="Polynomial fit (deg 9)")
+        ax.plot(centers, poly(centers), "-", color="red", label="Polynomial fit (deg 9)")
         ax.set_xlabel(coord)
         ax.set_ylabel("Success rate")
         ax.set_title(f"Success rate vs {coord}")
         ax.legend()
         ax.grid(True)
         plt.tight_layout()
+        plt.savefig(PLOTS_DIR / fname, dpi=150, bbox_inches="tight", facecolor="white")
         plt.show()
+        print(f"Saved: plots/{fname}")
 
-    # Print peak coordinate
-    y_fine = np.linspace(0, 80, 500)
-    y_bins = np.arange(0, 81, 0.5)
-    df_clean["bin"] = pd.cut(df_clean["end_y"], bins=y_bins)
-    y_success = df_clean.groupby("bin")["success_int"].mean()
-    y_centers = [iv.left + (iv.right - iv.left) / 2 for iv in y_success.index]
-    y_poly = np.poly1d(np.polyfit(y_centers, y_success, deg=9))
-
-    x_bins = np.arange(90, 121, 0.5)
-    df_clean["bin"] = pd.cut(df_clean["end_x"], bins=x_bins)
-    x_success = df_clean.groupby("bin")["success_int"].mean()
-    x_centers = [iv.left + (iv.right - iv.left) / 2 for iv in x_success.index]
-    x_poly = np.poly1d(np.polyfit(x_centers, x_success, deg=9))
-
-    x_fine = np.linspace(90, 120, 500)
+    # Peak coordinate
+    y_poly, y_centers = polys["end_y"]
+    x_poly, x_centers = polys["end_x"]
+    y_fine = np.linspace(min(y_centers), max(y_centers), 500)
+    x_fine = np.linspace(min(x_centers), max(x_centers), 500)
     y_peak = y_fine[np.argmax(y_poly(y_fine))]
     x_peak = x_fine[np.argmax(x_poly(x_fine))]
     print(f"\nEstimated peak delivery coordinate: x={x_peak:.2f}, y={y_peak:.2f}")
@@ -492,9 +494,7 @@ def plot_short_vs_zones(df: pd.DataFrame) -> None:
     zone_stats = df.groupby("zone")["success"].agg(["sum", "count"]).reset_index()
     zone_stats["success_rate"] = zone_stats["sum"] / zone_stats["count"]
 
-    short = df[
-        df["end_x"].between(105, 120) & df["end_y"].between(65, 80)
-    ]
+    short = df[df["end_x"].between(105, 120) & df["end_y"].between(65, 80)]
     short_rate = short["success"].mean() if len(short) > 0 else 0
     short_row = pd.DataFrame([{
         "zone": "Short Delivery",
@@ -515,7 +515,9 @@ def plot_short_vs_zones(df: pd.DataFrame) -> None:
     ax.set_title("Success Rate: Short Passes vs Other Delivery Zones")
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
+    plt.savefig(PLOTS_DIR / "short_vs_zones.png", dpi=150, bbox_inches="tight", facecolor="white")
     plt.show()
+    print("Saved: plots/short_vs_zones.png")
 
 
 # ---------------------------------------------------------------------------
@@ -523,6 +525,9 @@ def plot_short_vs_zones(df: pd.DataFrame) -> None:
 # ---------------------------------------------------------------------------
 
 def main():
+    # Create plots directory if it doesn't exist
+    PLOTS_DIR.mkdir(exist_ok=True)
+
     print("Loading events...")
     df_corners, df_goals = load_events(EVENTS_DIR)
 
@@ -541,6 +546,8 @@ def main():
     plot_swing_zone_heatmap(df_corners)
     plot_polynomial_peak(df_corners)
     plot_short_vs_zones(df_corners)
+
+    print(f"\nAll plots saved to {PLOTS_DIR}/")
 
 
 if __name__ == "__main__":
